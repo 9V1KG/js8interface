@@ -37,7 +37,7 @@ def process_kbd_in(line_in: str) -> bytes:
         # type TX.SET_TEXT and TX.SEND_MESSAGE
         msg_js = {
             "params": {},
-            "type": "TX.SEND_MESSAGE",
+            "type": "TX.SET_TEXT",
             "value": aprs_msg
         }
         byts = bytes(repr(msg_js).replace("'", "\""), "utf-8")
