@@ -7,10 +7,9 @@ import socket
 import json
 import sys
 import select
-import queue
 
 
-SERVER = socket.gethostbyname("localhost")
+SERVER = ""
 PORT = 2237  # used by JS8 and WSJTX
 ADDR = (SERVER, PORT)
 BUFFER = 1024
@@ -47,30 +46,35 @@ def process_kbd_in(line_in: str) -> bytes:
 
 
 # Create a datagram socket
-UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-UDPServerSocket.bind(ADDR)  # Bind to address and ip - use try
+UDPclient = socket.socket(
+    family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP
+)
+
+UDPclient.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+UDPclient.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+UDPclient.bind(ADDR)  # Bind to address and ip - use try
 print(f"UDP server up and listening on {ADDR}")
 
-inputs = [sys.stdin, UDPServerSocket]  # Sockets from which we expect to read
-outputs = [UDPServerSocket]  # Sockets to which we expect to write
-message_queues = {}  # Outgoing message queues (socket:Queue)
+inputs = [sys.stdin, UDPclient]  # Sockets from which we expect to read
+outputs = [UDPclient]  # Sockets to which we expect to write
 address = None, None
 
 while inputs:
-    while sys.stdin in select.select(inputs, outputs, [], 0)[0]:
-        line = sys.stdin.readline()
-        if line and "send" in line:
+    readable, writable, exceptional = select.select(inputs, outputs, [], 0)
+    for s in readable:
+        if s == sys.stdin:
+            line = sys.stdin.readline()
             b_str = process_kbd_in(line)
             if len(b_str) > 0:
-                UDPServerSocket.sendto(b_str, address)
-
-    while UDPServerSocket in select.select(inputs, outputs, [], 0)[0]:
-        message, address = UDPServerSocket.recvfrom(BUFFER)
-
-        clientMsg = message.decode("utf-8")
-        clientIP = f"Client IP Address:{address}"
-
-        msg = json.loads(clientMsg)
-        if msg['type'] != "PING" and msg['type'] != "TX.FRAME":
-            print(clientIP)
-            print(json.dumps(msg, indent=4))
+                UDPclient.sendto(b_str, address)
+        elif s == UDPclient:
+            message, address = UDPclient.recvfrom(BUFFER)
+            clientMsg = message.decode("utf-8")
+            clientIP = address
+            try:  # check for valid json
+                msg = json.loads(clientMsg)
+                print(clientIP)
+                print(json.dumps(msg, indent=4))
+            except json.decoder.JSONDecodeError:
+                print(clientIP)
+                print(clientMsg)
